@@ -5146,6 +5146,8 @@ pub async fn run_repl(mut config: AppConfig) -> Result<()> {
                         max_output: None,
                         source: Some("override".into()),
                         verified_at: None,
+                        free: None,
+                        chat: None,
                     };
                     // Compare against catalogue value before saving so we
                     // can warn when the override exceeds it (trust + warn).

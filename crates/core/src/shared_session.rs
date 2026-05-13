@@ -3541,7 +3541,10 @@ fn view_event_to_chat_envelope(ev: &ViewEvent) -> Option<serde_json::Value> {
             "output": output,
         })),
         ViewEvent::TurnDone => Some(json!({ "type": "turn_done" })),
-        ViewEvent::ErrorText(text) => Some(json!({ "type": "error", "text": text })),
+        ViewEvent::ErrorText(text) => Some(json!({
+            "type": "error",
+            "text": crate::providers::humanize_provider_error(text),
+        })),
         _ => None,
     }
 }
