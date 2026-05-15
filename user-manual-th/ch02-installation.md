@@ -196,11 +196,20 @@ $ docker pull thclaws/thclaws:latest
 $ docker run --rm -it \
     -v "$(pwd)":/workspace \
     -p 127.0.0.1:8443:8443 \
-    --env-file .env \
     thclaws/thclaws:latest
 ```
 
-เปิด `http://localhost:8443` ในเบราว์เซอร์ folder ที่ mount ไว้
+เปิด `http://localhost:8443` ในเบราว์เซอร์
+
+> **เพิ่ม API key** — ถ้าตั้งใน shell ไว้แล้ว key จะ pass ผ่านเข้า
+> container อัตโนมัติ ถ้าจะ inject key ต่อ container ให้เพิ่ม
+> `--env-file .env` ในคำสั่ง run แล้วใส่ `ANTHROPIC_API_KEY=…`,
+> `OPENAI_API_KEY=…` ฯลฯ ในไฟล์ `.env` ที่ `pwd` หรือจะตั้ง key
+> ภายหลังจาก settings UI ในเบราว์เซอร์ก็ได้ — thClaws เขียนลง
+> `.thclaws/settings.json` ใน mount ก็จะ persist ข้าม container
+> restart **หมายเหตุ:** Docker จะ error (`open .env: no such file
+> or directory`) ถ้า pass `--env-file .env` แล้วไฟล์ไม่มีจริง —
+> `touch .env` ก่อนหรือไม่ก็ถอด flag ออก folder ที่ mount ไว้
 จะปรากฏเป็น `/workspace` ใน container thClaws จะเขียน state ของ
 session / plan / team / KMS ลงที่ `./.thclaws/` บน host —
 container restart ก็ไม่หาย

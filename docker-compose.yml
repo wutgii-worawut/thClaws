@@ -29,8 +29,12 @@ services:
     volumes:
       - ./:/workspace
       - thclaws-config:/root/.config/thclaws
+    # Drop the `required: false` line if you pin an old Compose
+    # version (<2.24); the workaround there is `touch .env` before
+    # `up`. Newer Compose treats a missing optional env_file as empty.
     env_file:
-      - .env
+      - path: .env
+        required: false
     restart: unless-stopped
 
 volumes:

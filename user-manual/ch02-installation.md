@@ -177,11 +177,21 @@ $ docker pull thclaws/thclaws:latest
 $ docker run --rm -it \
     -v "$(pwd)":/workspace \
     -p 127.0.0.1:8443:8443 \
-    --env-file .env \
     thclaws/thclaws:latest
 ```
 
-Open `http://localhost:8443` in your browser. The mounted folder
+Open `http://localhost:8443` in your browser.
+
+> **Adding API keys** — if you've already exported them in your
+> shell, they pass through automatically. To inject keys per
+> container, add `--env-file .env` to the run line and put
+> `ANTHROPIC_API_KEY=…`, `OPENAI_API_KEY=…`, etc. in a `.env` file
+> next to your `pwd`. You can also set keys later from the
+> in-browser settings UI; thClaws writes them to
+> `.thclaws/settings.json` inside the mount, so they persist across
+> container restarts. **Note:** Docker errors out (`open .env: no
+> such file or directory`) if you pass `--env-file .env` and the
+> file doesn't exist — `touch .env` first or drop the flag. The mounted folder
 shows up as `/workspace` inside the container; thClaws writes
 session / plan / team / KMS state to `./.thclaws/` on the host, so
 everything survives container restarts.
