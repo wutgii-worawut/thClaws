@@ -68,7 +68,12 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 # ──────────────────────────────────────────────────────────────────────
 FROM ${RUNTIME_BASE} AS runtime
 
-ARG USERNAME=thaclaws
+# Run as non-root. Override USER_UID/USER_GID at build time so files
+# written to the bind-mounted /workspace are owned by your host user:
+#   docker build \
+#     --build-arg USER_UID=$(id -u) \
+#     --build-arg USER_GID=$(id -g) ...
+ARG USERNAME=thclaws
 ARG USER_UID=1000
 ARG USER_GID=1000
 
@@ -92,9 +97,6 @@ RUN groupadd --gid ${USER_GID} ${USERNAME} \
 COPY --from=builder /usr/local/bin/thclaws /usr/local/bin/thclaws
 
 WORKDIR /workspace
-
-# Ensure mounted workspace is writable
-RUN chown -R ${USER_UID}:${USER_GID} /workspace
 
 EXPOSE 8443
 
