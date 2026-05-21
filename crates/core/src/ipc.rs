@@ -841,12 +841,93 @@ pub fn handle_ipc(msg: Value, ctx: &IpcContext) -> bool {
                     None,
                 ),
             };
+            // Trigger an in-place system-prompt rebuild on the running
+            // worker — without this, an edit-and-save cycle in the
+            // Settings menu only takes effect on the next session.
+            if ok {
+                let _ = ctx
+                    .shared
+                    .input_tx
+                    .send(ShellInput::InstructionsChanged);
+            }
             let payload = serde_json::json!({
                 "type": "instructions_save_result",
                 "scope": scope,
                 "path": path,
                 "ok": ok,
                 "error": error,
+            });
+            (ctx.dispatch)(payload.to_string());
+        }
+
+        // ── Deploy target (dev-plan/28: /deploy command config) ────
+        "remote_agent_get" => {
+            let url = crate::remote_agent::url();
+            // Resolve the token to learn whether one is stored AND
+            // how long it is — the length is what powers the
+            // ••••• sentinel sizing in the Settings modal (matches
+            // the api_key_status row shape). The value itself is
+            // NEVER returned to the frontend.
+            let token_resolved = crate::remote_agent::token();
+            let has_token = token_resolved.is_some();
+            let token_length = token_resolved.as_deref().map(|t| t.len()).unwrap_or(0);
+            let env_var_set = std::env::var("THCLAWS_REMOTE_AGENT_TOKEN")
+                .map(|v| !v.trim().is_empty())
+                .unwrap_or(false);
+            let payload = serde_json::json!({
+                "type": "remote_agent_config",
+                "url": url,
+                "has_token": has_token,
+                "token_length": token_length,
+                "env_var_set": env_var_set,
+                "keychain_writable": crate::remote_agent::keychain_writable(),
+            });
+            (ctx.dispatch)(payload.to_string());
+        }
+
+        "remote_agent_set" => {
+            // url and token are independent — either can be omitted to
+            // update only one. Empty string explicitly clears.
+            let url_arg = msg.get("url").and_then(|v| v.as_str());
+            let token_arg = msg.get("token").and_then(|v| v.as_str());
+            let mut url_ok = true;
+            let mut url_err = String::new();
+            let mut token_ok = true;
+            let mut token_err = String::new();
+
+            if let Some(url) = url_arg {
+                let mut project = crate::config::ProjectConfig::load().unwrap_or_default();
+                let normalized = if url.trim().is_empty() {
+                    None
+                } else {
+                    Some(url)
+                };
+                project.set_remote_agent_url(normalized);
+                if let Err(e) = project.save() {
+                    url_ok = false;
+                    url_err = format!("settings.json write failed: {e}");
+                }
+            }
+
+            if let Some(token) = token_arg {
+                let trimmed = token.trim();
+                let result = if trimmed.is_empty() {
+                    crate::remote_agent::clear_token()
+                } else {
+                    crate::remote_agent::set_token(trimmed)
+                };
+                if let Err(e) = result {
+                    token_ok = false;
+                    token_err = format!("{e}");
+                }
+            }
+
+            let payload = serde_json::json!({
+                "type": "remote_agent_result",
+                "url_ok": url_ok,
+                "url_error": url_err,
+                "token_ok": token_ok,
+                "token_error": token_err,
             });
             (ctx.dispatch)(payload.to_string());
         }

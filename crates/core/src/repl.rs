@@ -598,6 +598,20 @@ pub enum SlashCommand {
         /// 3b inside dream.md) to every page Pass 3 touched.
         all_sessions: bool,
     },
+    /// `/deploy [--pod URL] [--token TOKEN] [--dry-run] [--full]
+    /// [--include-memory] [--allow-stdio-mcp]` — ship the current
+    /// project's .thclaws/ to a thclaws --serve pod. URL + token
+    /// default to the configured deploy target
+    /// (remote_agent_url + remote-agent-token keychain entry). See
+    /// dev-plan/28.
+    Deploy {
+        pod: Option<String>,
+        token: Option<String>,
+        dry_run: bool,
+        full: bool,
+        include_memory: bool,
+        allow_stdio_mcp: bool,
+    },
     Unknown(String),
 }
 
@@ -1385,6 +1399,7 @@ pub fn parse_slash(input: &str) -> Option<SlashCommand> {
         "schedule" | "sched" => parse_schedule_subcommand(args),
         "agent" => parse_agent_subcommand(args),
         "agents" => SlashCommand::AgentsList,
+        "deploy" => parse_deploy_subcommand(args),
         "dream" => {
             // Parse `--all` flag (order-insensitive). Anything else is
             // the focus topic. `/dream auth --all` and `/dream --all
@@ -1422,6 +1437,59 @@ pub fn parse_slash(input: &str) -> Option<SlashCommand> {
         }
         _ => SlashCommand::Unknown(cmd.to_string()),
     })
+}
+
+/// Parse `/deploy [--pod URL] [--token TOKEN] [--dry-run] [--full]
+/// [--include-memory] [--allow-stdio-mcp]`. All flags optional —
+/// missing URL/token fall back to the configured remote-agent target
+/// (see dev-plan/28).
+fn parse_deploy_subcommand(args: &str) -> SlashCommand {
+    let mut pod: Option<String> = None;
+    let mut token: Option<String> = None;
+    let mut dry_run = false;
+    let mut full = false;
+    let mut include_memory = false;
+    let mut allow_stdio_mcp = false;
+    let mut tokens = args.split_whitespace().peekable();
+    while let Some(tok) = tokens.next() {
+        match tok {
+            "--dry-run" | "--plan" => dry_run = true,
+            "--full" | "--no-diff" => full = true,
+            "--include-memory" => include_memory = true,
+            "--allow-stdio-mcp" => allow_stdio_mcp = true,
+            "--pod" => {
+                pod = tokens.next().map(|s| s.to_string());
+                if pod.as_deref().is_none() {
+                    return SlashCommand::Unknown("--pod requires a URL".into());
+                }
+            }
+            "--token" => {
+                token = tokens.next().map(|s| s.to_string());
+                if token.as_deref().is_none() {
+                    return SlashCommand::Unknown("--token requires a value".into());
+                }
+            }
+            other if other.starts_with("--pod=") => {
+                pod = Some(other.trim_start_matches("--pod=").to_string());
+            }
+            other if other.starts_with("--token=") => {
+                token = Some(other.trim_start_matches("--token=").to_string());
+            }
+            other => {
+                return SlashCommand::Unknown(format!(
+                    "unknown arg '{other}' — usage: /deploy [--pod URL] [--token T] [--dry-run] [--full] [--include-memory] [--allow-stdio-mcp]"
+                ));
+            }
+        }
+    }
+    SlashCommand::Deploy {
+        pod,
+        token,
+        dry_run,
+        full,
+        include_memory,
+        allow_stdio_mcp,
+    }
 }
 
 /// Parse `/agent <name> <prompt>` and `/agent cancel <id>`. Bare
@@ -2813,6 +2881,9 @@ pub fn built_in_commands() -> &'static [BuiltInCommand] {
 
         // Research
         BuiltInCommand { name: "research", description: "Background research → KMS",                  category: "Research", usage: "<query> | list | status <id> | show <id> | cancel <id> | wait <id>" },
+
+        // Deploy
+        BuiltInCommand { name: "deploy",   description: "Ship .thclaws/ to a remote pod (dev-plan/28)", category: "Deploy", usage: "[--pod URL] [--token T] [--dry-run] [--full]" },
 
         // System
         BuiltInCommand { name: "help",     description: "Show this help",                             category: "System", usage: "" },
@@ -8364,6 +8435,42 @@ pub async fn run_repl(mut config: AppConfig) -> Result<()> {
                              (rebuild with --features gui or use thclaws --gui).{COLOR_RESET}"
                         );
                     }
+                }
+                SlashCommand::Deploy {
+                    pod,
+                    token,
+                    dry_run,
+                    full,
+                    include_memory,
+                    allow_stdio_mcp,
+                } => {
+                    let resolved_pod = pod.or_else(crate::remote_agent::url);
+                    let resolved_token = token.or_else(crate::remote_agent::token);
+                    let Some(pod_url) = resolved_pod else {
+                        println!(
+                            "{COLOR_YELLOW}[deploy] REMOTE_AGENT_URL not set — \
+                             open Settings → Provider API keys → Deploy target, \
+                             or pass --pod <URL>{COLOR_RESET}"
+                        );
+                        continue;
+                    };
+                    let Some(token_val) = resolved_token else {
+                        println!(
+                            "{COLOR_YELLOW}[deploy] REMOTE_AGENT_TOKEN not set — \
+                             open Settings → Provider API keys → Deploy target, \
+                             or pass --token <T>{COLOR_RESET}"
+                        );
+                        continue;
+                    };
+                    let args = crate::deploy_client::DeployArgs {
+                        pod: pod_url,
+                        token: Some(token_val),
+                        include_memory,
+                        allow_stdio_mcp,
+                        dry_run,
+                        full,
+                    };
+                    let _ = crate::deploy_client::run(args).await;
                 }
                 SlashCommand::Unknown(what) => {
                     println!("{COLOR_YELLOW}unknown command: {what}{COLOR_RESET}");

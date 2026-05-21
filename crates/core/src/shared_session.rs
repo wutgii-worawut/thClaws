@@ -130,6 +130,13 @@ pub enum ShellInput {
     /// worker keeps holding the stale one — the exact mismatch users
     /// see as "sidebar says openai but error mentions anthropic."
     ReloadConfig,
+    /// The user just saved an AGENTS.md / CLAUDE.md (folder or global
+    /// scope) via the GUI's instructions editor. Rebuild the running
+    /// session's system prompt in place so the next turn sees the
+    /// updated instructions — no restart, no `/new` required.
+    /// Lighter than [`Self::ReloadConfig`] (no provider rebuild) — only
+    /// touches `state.system_prompt`.
+    InstructionsChanged,
     /// Widget-initiated tool call from an embedded MCP App. The
     /// originating widget called `app.callServerTool({name, arguments})`;
     /// we look up the qualified tool in the registry, run it, and
@@ -2273,6 +2280,23 @@ async fn run_worker(
                         )));
                     }
                 }
+            }
+            ShellInput::InstructionsChanged => {
+                // The Settings menu's AGENTS.md editor (global or folder
+                // scope) just saved. ProjectContext::discover re-runs
+                // on rebuild and picks up the new file content. No
+                // provider rebuild needed — only the system prompt
+                // changes. Subsequent turns use the fresh prompt; an
+                // already in-flight turn keeps the snapshot it
+                // captured (per the agent loop's `let system =
+                // self.system.clone();` pattern), which is the right
+                // behavior — don't yank context out from under the
+                // model mid-thought.
+                state.rebuild_system_prompt();
+                let _ = events_tx.send(ViewEvent::SlashOutput(
+                    "[instructions] system prompt rebuilt — new content applies on next turn"
+                        .into(),
+                ));
             }
             ShellInput::ChangeCwd(new_cwd) => {
                 // No-op short-circuit: the StartupModal's "Start"

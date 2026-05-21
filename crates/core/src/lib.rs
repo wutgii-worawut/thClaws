@@ -71,6 +71,7 @@ pub mod sandbox;
 pub mod schedule;
 pub mod schedule_presets;
 pub mod sdk_mcp;
+pub mod remote_agent;
 pub mod secrets;
 #[cfg(feature = "gui")]
 pub mod server;

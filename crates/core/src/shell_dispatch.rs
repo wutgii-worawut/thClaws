@@ -3067,6 +3067,59 @@ pub async fn dispatch(
                 Err(e) => emit(events_tx, format!("/dream: {e}")),
             }
         }
+        SlashCommand::Deploy {
+            pod,
+            token,
+            dry_run,
+            full,
+            include_memory,
+            allow_stdio_mcp,
+        } => {
+            // Defaults from the configured deploy target (settings.json
+            // + keychain). Explicit /deploy --pod / --token win.
+            let resolved_pod = pod.clone().or_else(crate::remote_agent::url);
+            let resolved_token = token.clone().or_else(crate::remote_agent::token);
+            let Some(pod_url) = resolved_pod else {
+                emit(
+                    events_tx,
+                    "[deploy] REMOTE_AGENT_URL not set — open Settings → Provider API keys → Deploy target, or pass --pod <URL>".into(),
+                );
+                return;
+            };
+            let Some(token_val) = resolved_token else {
+                emit(
+                    events_tx,
+                    "[deploy] REMOTE_AGENT_TOKEN not set — open Settings → Provider API keys → Deploy target, or pass --token <T>".into(),
+                );
+                return;
+            };
+            let events_tx_clone = events_tx.clone();
+            tokio::spawn(async move {
+                let args = crate::deploy_client::DeployArgs {
+                    pod: pod_url,
+                    token: Some(token_val),
+                    include_memory,
+                    allow_stdio_mcp,
+                    dry_run,
+                    full,
+                };
+                // Pipe deploy progress / errors into the same SlashOutput
+                // event stream the rest of /<command> output uses, so
+                // the user sees the actual upload events / failure
+                // reason inline instead of having to switch to the
+                // terminal thclaws was launched from.
+                let sink_tx = events_tx_clone.clone();
+                let sink = move |line: &str, level: crate::deploy_client::DeployLog| {
+                    let _ = level; // (level distinction is for stdio sinks; chat
+                                   // surface renders them all the same)
+                    let _ = sink_tx.send(ViewEvent::SlashOutput(line.to_string()));
+                };
+                let code = crate::deploy_client::run_with_sink(args, sink).await;
+                let _ = events_tx_clone.send(ViewEvent::SlashOutput(format!(
+                    "[deploy] finished (exit code {code})"
+                )));
+            });
+        }
         SlashCommand::Unknown(detail) => {
             emit(events_tx, format!("unknown command: {detail}"));
         }

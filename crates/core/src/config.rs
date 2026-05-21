@@ -207,6 +207,13 @@ pub struct AppConfig {
     /// their own rather than a generic map.
     #[serde(default)]
     pub translator_subagent_model: Option<String>,
+
+    /// Default target URL for the `/deploy` slash command (dev-plan/28).
+    /// Paired with the `remote-agent-token` keychain entry. Both can be
+    /// overridden per-invocation with `--pod` / `--token`. Not
+    /// sensitive (URL only) — token sits in the keychain.
+    #[serde(default, alias = "remoteAgentUrl")]
+    pub remote_agent_url: Option<String>,
 }
 
 /// Default stream-chunk idle timeout. Used by `serde(default = ...)`
@@ -263,6 +270,7 @@ impl Default for AppConfig {
             gateway_use_for: Vec::new(),
             extract_save_skill_models: None,
             translator_subagent_model: None,
+            remote_agent_url: None,
         }
     }
 }
@@ -457,6 +465,10 @@ pub struct ProjectConfig {
     /// per-provider opt-in lives in user-visible config.
     #[serde(rename = "gatewayUseFor")]
     pub gateway_use_for: Option<Vec<String>>,
+    /// Default target for `/deploy`. See
+    /// [`AppConfig::remote_agent_url`].
+    #[serde(rename = "remoteAgentUrl")]
+    pub remote_agent_url: Option<String>,
 }
 
 fn null_team_enabled_is_false<'de, D>(d: D) -> std::result::Result<Option<bool>, D::Error>
@@ -492,6 +504,7 @@ impl Default for ProjectConfig {
             auto_learn_reconcile_hours: None,
             openrouter_free_only: None,
             gateway_use_for: None,
+            remote_agent_url: None,
         }
     }
 }
@@ -708,10 +721,25 @@ impl ProjectConfig {
                 .filter(|s| !s.is_empty())
                 .collect();
         }
+        if let Some(ref url) = self.remote_agent_url {
+            let trimmed = url.trim();
+            if !trimmed.is_empty() {
+                config.remote_agent_url = Some(trimmed.to_string());
+            }
+        }
     }
 
     pub fn set_model(&mut self, model: &str) {
         self.model = Some(model.to_string());
+    }
+
+    /// Persist the `/deploy` default target URL. Pair with the
+    /// `remote-agent-token` keychain entry (managed by
+    /// [`crate::secrets`]) for the bearer token.
+    pub fn set_remote_agent_url(&mut self, url: Option<&str>) {
+        self.remote_agent_url = url
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
     }
 
     /// Persist the GUI zoom factor. Clamped to a sane range so a
