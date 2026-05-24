@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0] — 2026-05-24
+
+One-shot schedules ("run once in 15 minutes / tomorrow at 9am"), plus
+two community fixes.
+
+### Added
+
+- **One-shot / relative-delay schedules**
+  ([#122](https://github.com/thClaws/thClaws/issues/122),
+  design by [@ultramcu](https://github.com/ultramcu)). Schedules can now
+  run **once** at a future time or after a relative delay, alongside the
+  existing recurring cron jobs:
+
+  ```sh
+  thclaws schedule add report --at "2026-05-24T15:30:00Z" --prompt "…"
+  thclaws schedule add check  --in 15m                    --prompt "…"
+  ```
+
+  `--in` accepts `s`/`m`/`h`/`d` (and a bare integer as seconds);
+  `--at` takes an RFC 3339 timestamp. Both are mutually exclusive with
+  `--cron`. A one-shot fires once, then auto-disables. **Catch-up by
+  design:** a fire time already in the past when the scheduler ticks
+  (e.g. the daemon was down over the slot) runs immediately rather than
+  being lost — the footgun of hand-writing a cron for a single minute,
+  where a missed slot silently waits a year. `schedule list` shows
+  `once@<time> (pending|fired)`; the new on-disk `runAt` field is
+  optional, so existing `schedules.json` files stay compatible.
+
+### Fixed
+
+- **Edit: reject an empty `old_string`**
+  ([#121](https://github.com/thClaws/thClaws/pull/121),
+  [@ultramcu](https://github.com/ultramcu)). An empty `old_string`
+  matches between every character, so with `replace_all` it would inject
+  the replacement throughout the file and corrupt it. The Edit tool now
+  rejects it up front.
+
+- **ChatGptCodex credentials detected from the auth file**
+  ([#123](https://github.com/thClaws/thClaws/pull/123),
+  [@gobikom](https://github.com/gobikom)). `kind_has_credentials()` only
+  probed env vars, but ChatGptCodex (ChatGPT subscription) authenticates
+  via a file-based OAuth token — so it was wrongly reported as having no
+  credentials, and interactive `--cli` / GUI / `--serve` triggered the
+  model-fallback path and overwrote `settings.json`. It now resolves the
+  Codex auth store (honoring token expiry), and the shared-session
+  worker delegates to the same canonical check so all surfaces agree.
+
+### Default model — no change
+
+Default stays `claude-sonnet-4-6`.
+
 ## [0.17.1] — 2026-05-24
 
 KMS + Files management in the GUI, a LINE reconnect fix, and a clearer

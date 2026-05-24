@@ -4023,8 +4023,9 @@ impl Provider for NoopProvider {
 /// True if this provider is usable without further setup — either
 /// because the env var holding its API key is set, or because it
 /// doesn't need one (Ollama variants, Agent SDK using Claude Code's
-/// own auth). Mirrors `gui::kind_has_credentials` without the
-/// `#[cfg(feature = "gui")]` gate so the shared worker can call it.
+/// own auth). Delegates to the canonical `providers::kind_has_credentials`
+/// so the shared worker, GUI, and CLI all agree (incl. file-based
+/// ChatGptCodex auth).
 fn kind_has_credentials(kind: crate::providers::ProviderKind) -> bool {
     crate::providers::kind_has_credentials(Some(kind))
 }

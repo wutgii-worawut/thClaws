@@ -918,13 +918,15 @@ pub fn provider_has_credentials(cfg: &crate::config::AppConfig) -> bool {
     kind_has_credentials(cfg.detect_provider_kind().ok())
 }
 
-/// True when `kind` has credentials available (env var, auth file, or no-auth
-/// local provider). Same logic the GUI's auto-fallback path uses.
+/// True when `kind` has credentials available (env var, auth file, or
+/// no-auth local provider). Same logic the GUI's auto-fallback path uses.
 pub fn kind_has_credentials(kind: Option<ProviderKind>) -> bool {
     let Some(kind) = kind else { return false };
     match kind {
         ProviderKind::AgentSdk => true,
         ProviderKind::Ollama | ProviderKind::OllamaAnthropic | ProviderKind::LMStudio => true,
+        // ChatGptCodex auths via a file-based OAuth token, not an env
+        // var, so the generic api_key_env() probe below always misses.
         ProviderKind::ChatGptCodex => {
             match crate::codex_auth_store::resolve_for_profile("default") {
                 Ok(Some(auth)) => !auth.is_expired(60),

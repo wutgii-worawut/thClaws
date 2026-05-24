@@ -192,9 +192,20 @@ enum ScheduleCmd {
     Add {
         /// Stable id for the schedule (used as the lookup key and log dir name).
         id: String,
-        /// Standard 5-field POSIX cron expression (e.g. "30 8 * * MON-FRI").
+        /// Standard 5-field POSIX cron expression for a recurring job
+        /// (e.g. "30 8 * * MON-FRI"). Mutually exclusive with --at/--in.
         #[arg(long)]
-        cron: String,
+        cron: Option<String>,
+        /// One-shot: fire once at this absolute RFC 3339 time
+        /// (e.g. "2026-05-24T15:30:00Z"), then auto-disable. Mutually
+        /// exclusive with --cron and --in.
+        #[arg(long, conflicts_with_all = ["cron", "in_delay"])]
+        at: Option<String>,
+        /// One-shot: fire once after this relative delay (e.g. 15m, 2h,
+        /// 90s, 1d), then auto-disable. Mutually exclusive with --cron
+        /// and --at.
+        #[arg(long = "in", conflicts_with_all = ["cron", "at"])]
+        in_delay: Option<String>,
         /// Prompt text to feed `thclaws --print` when this schedule fires.
         #[arg(long)]
         prompt: String,
@@ -603,6 +614,8 @@ fn run_schedule_subcommand(cmd: ScheduleCmd) -> i32 {
         ScheduleCmd::Add {
             id,
             cron,
+            at,
+            in_delay,
             prompt,
             cwd,
             model,
@@ -611,6 +624,34 @@ fn run_schedule_subcommand(cmd: ScheduleCmd) -> i32 {
             disabled,
             watch,
         } => {
+            // Resolve the trigger: one-shot (--at absolute / --in
+            // relative) vs recurring (--cron). clap already enforces
+            // mutual exclusion; here we require exactly one and turn
+            // --in into an absolute run_at.
+            let run_at = match (at, in_delay) {
+                (Some(ts), _) => match schedule::parse_run_at(&ts) {
+                    Ok(dt) => Some(dt.to_rfc3339()),
+                    Err(e) => {
+                        eprintln!("\x1b[31merror: {e}\x1b[0m");
+                        return 1;
+                    }
+                },
+                (_, Some(dur)) => match schedule::parse_relative_duration(&dur) {
+                    Ok(d) => Some((chrono::Utc::now() + d).to_rfc3339()),
+                    Err(e) => {
+                        eprintln!("\x1b[31merror: {e}\x1b[0m");
+                        return 1;
+                    }
+                },
+                (None, None) => None,
+            };
+            if run_at.is_none() && cron.is_none() {
+                eprintln!(
+                    "\x1b[31merror: a schedule needs a trigger — pass --cron \
+                     for recurring, or --at/--in for a one-shot\x1b[0m"
+                );
+                return 1;
+            }
             let cwd_path = match cwd {
                 Some(p) => std::path::PathBuf::from(p),
                 None => match std::env::current_dir() {
@@ -637,7 +678,8 @@ fn run_schedule_subcommand(cmd: ScheduleCmd) -> i32 {
             };
             let entry = schedule::Schedule {
                 id: id.clone(),
-                cron,
+                cron: cron.unwrap_or_default(),
+                run_at,
                 cwd: cwd_path,
                 prompt,
                 model,
@@ -689,10 +731,23 @@ fn run_schedule_subcommand(cmd: ScheduleCmd) -> i32 {
                     Some(_) => " err",
                     None => "    ",
                 };
+                // Trigger column: cron expression for recurring jobs,
+                // or "once@<run_at> (pending|fired)" for one-shots.
+                let trigger = match &s.run_at {
+                    Some(run_at) => {
+                        let state = if s.last_run.is_some() {
+                            "fired"
+                        } else {
+                            "pending"
+                        };
+                        format!("once@{run_at} ({state})")
+                    }
+                    None => s.cron.clone(),
+                };
                 println!(
-                    "{status} {exit} {watch}  {:24}  {:20}  {}  {}",
+                    "{status} {exit} {watch}  {:24}  {:30}  {}  {}",
                     s.id,
-                    s.cron,
+                    trigger,
                     last,
                     s.cwd.display()
                 );
