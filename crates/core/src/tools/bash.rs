@@ -30,6 +30,13 @@ impl Tool for BashTool {
          Default timeout: 120000ms (override with `timeout` in milliseconds, max 600000). \
          Always requires approval. Use this for general operations (git, build, \
          test, curl, ls -l, rm, etc.) that the specialized tools don't cover. \
+         Runs from the workspace root. Invoke programs by name so the shell \
+         resolves them via PATH (e.g. `python script.py`) — this works even when \
+         the interpreter is installed outside the workspace. Do NOT fabricate an \
+         absolute path to an interpreter; a guessed/wrong path just fails. \
+         Reference scripts and files by paths inside the workspace. (Only the \
+         `cwd` argument is sandboxed to the workspace — the command itself is not, \
+         but a made-up path won't exist.) \
          IMPORTANT: For long-running processes (servers, watchers, dev servers), \
          append ` &` to run in background, or use `timeout 10 command` to sample \
          initial output. Never run a server in foreground — it blocks until timeout."
