@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.1] — 2026-05-24
+
+Hotfix. macOS startup crash for every GUI / `--serve` user.
+
+### Fixed
+
+- **macOS: GUI / `--serve` build crashed on startup (TCC / Bluetooth SIGABRT)**
+  ([#116](https://github.com/thClaws/thClaws/issues/116),
+  [@ultramcu](https://github.com/ultramcu);
+  [#117](https://github.com/thClaws/thClaws/pull/117)).
+  The `cost_bridge` feature (Cardputer cost display, added in v0.15.0)
+  was enabled by default and started a Bluetooth LE scan on every
+  launch via `cost_bridge::spawn()` → `adapter.start_scan()`. On
+  macOS, any binary without an `NSBluetoothAlwaysUsageDescription`
+  `Info.plist` — every `cargo build` and every GitHub release archive
+  (none are `.app` bundles) — is killed by **TCC** with a hard
+  **SIGABRT** ~1–3s after startup, before serving any request. It also
+  popped a Bluetooth permission prompt for the ~99% of users who don't
+  own a thClaws-Cost Cardputer.
+  - Fix: `cost_bridge` is now **opt-in** (`default = []`). A stock
+    build never links `btleplug` or starts the BLE scan. Cardputer
+    users build with `--features cost_bridge`.
+  - No code changes — the call sites were already
+    `#[cfg(feature = "cost_bridge")]`-gated.
+  - **Affected releases v0.15.0 and v0.16.0**: macOS users on those
+    versions should upgrade to v0.16.1, or run with
+    `cargo run --no-default-features --features gui` as a workaround.
+
 ## [0.16.0] — 2026-05-23
 
 Four user-facing fixes — three issue-driven, plus a Files-tab polish item
